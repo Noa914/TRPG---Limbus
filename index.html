@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>림버스 / TRPG</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set, push, remove, update, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    /* ══════════════════════════════════
+       🔧 Firebase 설정 — 본인 프로젝트 값으로 교체하세요
+       https://console.firebase.google.com → 프로젝트 설정 → 웹 앱 추가
+    ══════════════════════════════════ */
+    const firebaseConfig = {
+      apiKey:            "YOUR_API_KEY",
+      authDomain:        "YOUR_PROJECT.firebaseapp.com",
+      databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId:         "YOUR_PROJECT",
+      storageBucket:     "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId:             "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
+
+    /* ── DB 경로 ── */
+    const ROOM = 'limbus-room-1';  // 방 ID (여러 방을 쓰려면 변경)
+    const dbChars     = () => ref(db, `${ROOM}/characters`);
+    const dbGameState = () => ref(db, `${ROOM}/gameState`);
+    const dbLog       = () => ref(db, `${ROOM}/log`);
+    const dbImages    = () => ref(db, `${ROOM}/images`);
+
+    /* ── 연결 상태 표시 ── */
+    const connRef = ref(db, '.info/connected');
+    onValue(connRef, snap => {
+      const el = document.getElementById('sync-status');
+      if (!el) return;
+      if (snap.val()) {
+        el.textContent = '● 실시간 동기화 중';
+        el.className = 'sync-status connected';
+      } else {
+        el.textContent = '○ 연결 끊김';
+        el.className = 'sync-status disconnected';
+      }
+    });
+
+    /* ── Firebase 유틸: 전역에 노출 ── */
+    window._fb = {
+      db, ref,
+      onValue, set, push, remove, update, serverTimestamp,
+      dbChars, dbGameState, dbLog, dbImages,
+      ROOM
+    };
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<div class="page-wrapper">
+
+  <!-- ━━━━━ HEADER ━━━━━ -->
+  <header class="site-header">
+    <div class="header-emblem">⬡</div>
+    <div class="header-text">
+      <h1 class="site-title">LIMBUS</h1>
+      <span class="site-subtitle">TRPG · 멀티 판정 시스템</span>
+    </div>
+    <div class="header-emblem flip">⬡</div>
+  </header>
+
+  <!-- ━━━━━ SYNC STATUS ━━━━━ -->
+  <div class="sync-bar">
+    <span class="sync-status disconnected" id="sync-status">○ Firebase 미설정 (오프라인)</span>
+    <span class="sync-hint">실시간 동기화는 Firebase 설정 후 활성화됩니다</span>
+  </div>
+
+  <!-- ━━━━━ PHASE BANNER ━━━━━ -->
+  <div class="phase-banner" id="phase-banner">
+    <span class="phase-label" id="phase-label">◈ 캐릭터 생성 단계</span>
+    <div class="phase-btns">
+      <button class="phase-btn" id="btn-add-char">＋ 캐릭터 추가</button>
+      <button class="phase-btn primary" id="btn-start-game">게임 시작 ▶</button>
+    </div>
+  </div>
+
+  <!-- ━━━━━ MAIN ━━━━━ -->
+  <main>
+
+    <!-- ── 캐릭터 슬롯 컨테이너 ── -->
+    <section class="chars-container" id="chars-container">
+      <!-- JS로 생성 -->
+    </section>
+
+    <!-- ── 이미지 갤러리 패널 ── -->
+    <section class="gallery-panel" id="gallery-panel">
+      <div class="panel-header">
+        <span class="panel-icon">🖼</span>
+        <h2>이미지 갤러리</h2>
+        <button class="gallery-upload-btn" id="gallery-upload-btn">＋ 이미지 추가</button>
+        <input type="file" id="gallery-file-input" accept="image/*" style="display:none" multiple/>
+      </div>
+      <div class="gallery-grid" id="gallery-grid">
+        <div class="gallery-empty" id="gallery-empty">업로드된 이미지가 없습니다.</div>
+      </div>
+    </section>
+
+    <!-- ── 마스터 판정 패널 (게임 시작 후 표시) ── -->
+    <section class="master-panel" id="master-panel" style="display:none">
+      <div class="panel-header">
+        <span class="panel-icon">⬟</span>
+        <h2>마스터 판정 설정</h2>
+        <span class="master-badge">MASTER</span>
+      </div>
+
+      <div class="master-grid">
+
+        <!-- 판정 내용 -->
+        <div class="form-group full-col">
+          <label class="form-label">판정 내용 <span class="hint">— 마스터가 입력</span></label>
+          <input type="text" id="master-reason" class="form-input" placeholder="예: 담장을 뛰어넘으려 한다"/>
+        </div>
+
+        <!-- 판정 스탯 -->
+        <div class="form-group">
+          <label class="form-label">판정 능력치</label>
+          <div class="stat-select-grid">
+            <button class="stat-btn active" data-stat="strength">⚔ 힘</button>
+            <button class="stat-btn" data-stat="agility">◎ 민첩</button>
+            <button class="stat-btn" data-stat="endurance">◉ 내구</button>
+            <button class="stat-btn" data-stat="luck">✦ 행운</button>
+            <button class="stat-btn" data-stat="technique">⬡ 기술</button>
+            <button class="stat-btn" data-stat="intelligence">◈ 지능</button>
+          </div>
+        </div>
+
+        <!-- 주사위 + DC -->
+        <div class="form-group">
+          <label class="form-label">주사위 종류</label>
+          <div class="dice-grid">
+            <button class="dice-btn" data-dice="2">D2</button>
+            <button class="dice-btn" data-dice="4">D4</button>
+            <button class="dice-btn" data-dice="6">D6</button>
+            <button class="dice-btn" data-dice="8">D8</button>
+            <button class="dice-btn active" data-dice="10">D10</button>
+            <button class="dice-btn" data-dice="12">D12</button>
+            <button class="dice-btn" data-dice="20">D20</button>
+            <button class="dice-btn" data-dice="50">D50</button>
+            <button class="dice-btn" data-dice="100">D100</button>
+          </div>
+          <div class="dc-row" style="margin-top:.7rem">
+            <label class="form-label" style="margin-bottom:.3rem">목표 난이도 (DC)</label>
+            <div style="display:flex;gap:.5rem;align-items:center">
+              <input type="number" id="master-dc" class="form-input dc-input" placeholder="없으면 비워두세요"/>
+              <button class="icon-btn" id="master-dc-clear" title="DC 제거">✕</button>
+            </div>
+            <div class="dc-presets" style="margin-top:.4rem">
+              <button class="dc-preset" data-dc="5">쉬움 5</button>
+              <button class="dc-preset" data-dc="10">보통 10</button>
+              <button class="dc-preset" data-dc="15">어려움 15</button>
+              <button class="dc-preset" data-dc="20">극한 20</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 판정 실행 -->
+        <div class="form-group full-col">
+          <button class="roll-all-btn" id="roll-all-btn">
+            <span class="roll-icon">⬟</span>
+            <span>전체 판정 실행</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 판정 결과 목록 -->
+      <div class="judge-results" id="judge-results" style="display:none">
+        <div class="judge-results-header">
+          <span>판정 결과</span>
+          <button class="icon-btn small" id="judge-close">✕</button>
+        </div>
+        <div class="judge-list" id="judge-list"></div>
+      </div>
+
+      <!-- 전체 로그 -->
+      <div class="log-section" style="margin-top:1.4rem">
+        <div class="log-header">
+          <span>전체 판정 기록</span>
+          <button class="icon-btn small" id="global-log-clear">초기화</button>
+        </div>
+        <div class="log-list" id="global-log-list">
+          <div class="log-empty">아직 판정 기록이 없습니다.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">LIMBUS TRPG SYSTEM · 림버스 판정 시스템</footer>
+</div>
+
+<!-- ── 별빛 사용 모달 ── -->
+<div class="modal-overlay" id="starlight-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-icon">✦</span>
+      <h3>별빛 사용 — <span id="modal-char-name">캐릭터</span></h3>
+      <button class="icon-btn" id="modal-close">✕</button>
+    </div>
+    <p class="modal-desc">변경할 항목을 선택하세요. 별빛 1개를 소모해 다시 굴립니다.</p>
+
+    <div class="modal-section">
+      <div class="modal-section-title">능력치 재굴림 (게임 시작 전에만 가능)</div>
+      <div class="modal-stat-grid" id="modal-stat-grid">
+        <!-- JS로 생성 -->
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">소속 재굴림</div>
+      <button class="modal-item-btn" id="modal-affil-reroll">
+        <span>소속</span>
+        <span class="modal-current" id="modal-affil-current">—</span>
+        <span class="modal-cost">✦ ×1</span>
+      </button>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">판정 재굴림 <span class="hint">(마지막 판정 결과)</span></div>
+      <button class="modal-item-btn" id="modal-roll-reroll">
+        <span>마지막 판정</span>
+        <span class="modal-current" id="modal-roll-current">—</span>
+        <span class="modal-cost">✦ ×1</span>
+      </button>
+    </div>
+
+    <div class="modal-starlight-count">
+      보유 별빛: <strong id="modal-starlight-val">0</strong>
+    </div>
+  </div>
+</div>
+
+<!-- ── 이미지 전체화면 라이트박스 ── -->
+<div class="lightbox-overlay" id="lightbox-overlay" style="display:none">
+  <button class="lightbox-close" id="lightbox-close">✕</button>
+  <button class="lightbox-nav prev" id="lightbox-prev">‹</button>
+  <div class="lightbox-content">
+    <img class="lightbox-img" id="lightbox-img" src="" alt=""/>
+    <div class="lightbox-caption" id="lightbox-caption"></div>
+  </div>
+  <button class="lightbox-nav next" id="lightbox-next">›</button>
+</div>
+
+<!-- ── 이미지 이름 편집 모달 ── -->
+<div class="modal-overlay" id="img-name-modal" style="display:none">
+  <div class="modal-box" style="max-width:340px">
+    <div class="modal-header">
+      <span class="modal-icon">✎</span>
+      <h3>이미지 이름 설정</h3>
+      <button class="icon-btn" id="img-name-close">✕</button>
+    </div>
+    <div class="form-group" style="margin-top:.8rem">
+      <label class="form-label">이미지 이름</label>
+      <input type="text" id="img-name-input" class="form-input" placeholder="이름을 입력하세요"/>
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem">
+      <button class="phase-btn" id="img-name-cancel">취소</button>
+      <button class="phase-btn primary" id="img-name-confirm">확인</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
