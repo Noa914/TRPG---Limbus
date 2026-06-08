@@ -265,45 +265,59 @@ body{background:var(--bg-deep);color:var(--text);font-family:var(--font-ui);min-
 /* FOOTER */
 .site-footer{text-align:center;padding:1.2rem 0 .5rem;border-top:1px solid var(--border);margin-top:1.5rem;font-size:.62rem;letter-spacing:.18em;color:var(--text-muted);text-transform:uppercase;}
 
-/* ── SYNC BAR ── */
-.sync-bar{display:flex;align-items:center;gap:.8rem;padding:.4rem 1rem;background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:var(--r);margin-bottom:.7rem;font-size:.65rem;}
-.sync-status{font-family:var(--font-d);font-size:.65rem;letter-spacing:.08em;}
-.sync-status.connected{color:var(--green-bright);}
-.sync-status.disconnected{color:var(--text-muted);}
-.sync-hint{color:var(--text-muted);font-size:.6rem;}
+/* ═══════════════════════════════════════
+   실시간 공유 · 커서 · 공유 화면 · 관전자
+═══════════════════════════════════════ */
 
-/* ── GALLERY PANEL ── */
-.gallery-panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:var(--pad);margin-bottom:1.4rem;position:relative;}
-.gallery-panel::before,.gallery-panel::after{content:'';position:absolute;width:9px;height:9px;border-color:var(--gold-dim);border-style:solid;opacity:.4;}
-.gallery-panel::before{top:7px;left:7px;border-width:1px 0 0 1px;}
-.gallery-panel::after{bottom:7px;right:7px;border-width:0 1px 1px 0;}
-.gallery-upload-btn{margin-left:auto;background:var(--bg-input);border:1px solid var(--border-accent);border-radius:var(--r);color:var(--purple-bright);font-family:var(--font-ui);font-size:.75rem;padding:.38rem .85rem;cursor:pointer;transition:all var(--t);}
-.gallery-upload-btn:hover{box-shadow:0 0 14px rgba(123,94,167,.3);border-color:var(--purple-bright);}
-.gallery-grid{display:flex;flex-wrap:wrap;gap:.9rem;margin-top:.9rem;}
-.gallery-empty{color:var(--text-muted);font-size:.75rem;padding:.6rem;width:100%;text-align:center;}
-.gallery-item{width:140px;display:flex;flex-direction:column;gap:.45rem;}
-.gallery-thumb-wrap{position:relative;width:140px;height:100px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);background:var(--bg-input);cursor:pointer;}
-.gallery-thumb{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s;}
-.gallery-thumb-wrap:hover .gallery-thumb{transform:scale(1.06);}
-.gallery-fullscreen-btn{position:absolute;inset:0;width:100%;height:100%;background:rgba(0,0,0,0);border:none;color:transparent;cursor:pointer;font-size:1.4rem;display:flex;align-items:center;justify-content:center;transition:all .2s;}
-.gallery-thumb-wrap:hover .gallery-fullscreen-btn{background:rgba(0,0,0,.45);color:var(--text);font-size:1.6rem;}
-.gallery-delete-btn{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);border:1px solid var(--red);border-radius:var(--r);color:var(--red-bright);font-size:.65rem;padding:.15rem .35rem;cursor:pointer;opacity:0;transition:opacity .2s;}
-.gallery-thumb-wrap:hover .gallery-delete-btn{opacity:1;}
-.gallery-name{font-size:.72rem;color:var(--gold);text-align:center;cursor:pointer;border-bottom:1px dashed transparent;transition:border-color .2s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;}
-.gallery-name:hover{border-bottom-color:var(--gold-dim);}
+/* ── 원격 커서 레이어 ── */
+#cursor-layer{position:fixed;inset:0;z-index:90;pointer-events:none;overflow:hidden;}
+.remote-cursor{position:absolute;transform:translate(-2px,-2px);transition:left .07s linear,top .07s linear;will-change:left,top;}
+.remote-cursor svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
+.remote-cursor-label{position:absolute;left:16px;top:14px;white-space:nowrap;font-family:var(--font-ui);font-size:.62rem;font-weight:500;color:#0a0a12;padding:.1rem .4rem;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.4);letter-spacing:.02em;}
 
-/* ── LIGHTBOX ── */
-.lightbox-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:flex;align-items:center;justify-content:center;animation:fade-in .18s ease;}
-.lightbox-content{display:flex;flex-direction:column;align-items:center;gap:.8rem;max-width:90vw;max-height:90vh;}
-.lightbox-img{max-width:88vw;max-height:82vh;object-fit:contain;border:1px solid var(--border-glow);border-radius:var(--rl);box-shadow:0 0 60px rgba(0,0,0,.8);}
-.lightbox-caption{font-family:var(--font-kr);font-size:1rem;color:var(--gold);letter-spacing:.08em;text-align:center;}
-.lightbox-close{position:fixed;top:1.2rem;right:1.4rem;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--text-dim);font-size:1rem;padding:.4rem .7rem;cursor:pointer;transition:all var(--t);z-index:201;}
-.lightbox-close:hover{border-color:var(--red);color:var(--red-bright);}
-.lightbox-nav{background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--text-dim);font-size:2rem;line-height:1;padding:.3rem .7rem;cursor:pointer;transition:all var(--t);flex-shrink:0;}
-.lightbox-nav:hover{border-color:var(--gold-dim);color:var(--gold);}
+/* ── 실시간 공유 바 ── */
+.rt-bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;padding:.6rem 1.1rem;background:linear-gradient(135deg,var(--bg-panel),var(--bg-panel-alt));border:1px solid var(--border);border-radius:var(--rl);margin-bottom:1.2rem;}
+.rt-left{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;}
+.rt-title{font-family:var(--font-d);font-size:.82rem;letter-spacing:.12em;color:var(--starlight);}
+.rt-status{font-size:.68rem;color:var(--text-dim);letter-spacing:.04em;}
+.rt-status.on{color:var(--green-bright);}
+.rt-form{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+.rt-input{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font-ui);font-size:.74rem;padding:.4rem .65rem;outline:none;transition:border-color var(--t);width:130px;}
+.rt-input:focus{border-color:var(--starlight-dim);box-shadow:0 0 0 3px rgba(126,207,255,.12);}
+.rt-room-input{width:150px;text-transform:uppercase;}
+.rt-btn{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text-dim);font-family:var(--font-ui);font-size:.74rem;padding:.42rem .8rem;cursor:pointer;transition:all var(--t);white-space:nowrap;}
+.rt-btn:hover{border-color:var(--border-accent);color:var(--text);}
+.rt-btn.primary{background:var(--starlight-bg);border-color:var(--starlight-dim);color:var(--starlight);}
+.rt-btn.primary:hover{box-shadow:0 0 14px rgba(126,207,255,.3);}
+.rt-btn.small{font-size:.68rem;padding:.32rem .6rem;}
+.rt-btn.danger:hover{border-color:var(--red);color:var(--red-bright);}
+.rt-connected{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.rt-meta{font-size:.72rem;color:var(--text-dim);}
+.rt-meta strong{color:var(--starlight);font-family:var(--font-d);letter-spacing:.08em;}
+.rt-presence{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;}
+.rt-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;color:var(--text);background:var(--bg-input);border:1px solid var(--border);border-radius:20px;padding:.15rem .55rem;}
+.rt-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor;}
 
-@media(max-width:600px){
-  .gallery-item{width:110px;}
-  .gallery-thumb-wrap{width:110px;height:78px;}
-  .gallery-name{max-width:110px;}
-}
+/* ── 공유 화면 패널 ── */
+.share-stage-panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:var(--pad);margin-bottom:1.4rem;}
+.share-controls{margin-left:auto;display:flex;align-items:center;gap:.5rem;}
+.share-upload-btn{background:var(--gold-bg);border:1px solid var(--gold-dim);border-radius:var(--r);color:var(--gold);font-family:var(--font-ui);font-size:.72rem;padding:.4rem .8rem;cursor:pointer;transition:all var(--t);}
+.share-upload-btn:hover{border-color:var(--gold);box-shadow:0 0 12px rgba(201,168,76,.22);color:var(--gold-bright);}
+.share-stage{position:relative;min-height:240px;border:1px dashed var(--border);border-radius:var(--r);background:var(--bg-input);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:border-color var(--t);}
+.share-stage.drag-over{border-color:var(--starlight);box-shadow:inset 0 0 30px rgba(126,207,255,.12);}
+#share-stage-view{max-width:100%;max-height:70vh;display:block;border-radius:var(--r);}
+.share-stage-empty{display:flex;flex-direction:column;align-items:center;gap:.4rem;color:var(--text-muted);text-align:center;padding:2rem 1rem;}
+.share-empty-icon{font-size:2rem;color:var(--border-glow);}
+.share-empty-hint{font-size:.65rem;color:var(--text-muted);max-width:340px;}
+.share-stage-caption{position:absolute;left:0;right:0;bottom:0;font-size:.66rem;color:var(--text-dim);background:linear-gradient(transparent,rgba(8,8,14,.85));padding:1.4rem .8rem .5rem;text-align:center;pointer-events:none;}
+.share-stage-caption:empty{display:none;}
+
+/* ── 관전자(플레이어) 모드: 마스터 전용 조작 숨김/비활성 ── */
+.spectator .phase-btns,
+.spectator .share-controls,
+.spectator .master-grid,
+.spectator #global-log-clear{display:none !important;}
+.spectator .master-panel::after{content:'';}
+body.spectator .master-panel .panel-header::after{content:'관전 중 · 마스터 화면 미러링';margin-left:auto;font-size:.62rem;color:var(--starlight);letter-spacing:.08em;}
+.spectator .char-card input,
+.spectator .char-card select{pointer-events:none;}

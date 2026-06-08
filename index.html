@@ -6,62 +6,10 @@
   <title>림버스 / TRPG</title>
   <link rel="stylesheet" href="style.css"/>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet"/>
-  <!-- Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set, push, remove, update, serverTimestamp }
-      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-    /* ══════════════════════════════════
-       🔧 Firebase 설정 — 본인 프로젝트 값으로 교체하세요
-       https://console.firebase.google.com → 프로젝트 설정 → 웹 앱 추가
-    ══════════════════════════════════ */
-    const firebaseConfig = {
-      apiKey:            "YOUR_API_KEY",
-      authDomain:        "YOUR_PROJECT.firebaseapp.com",
-      databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-      projectId:         "YOUR_PROJECT",
-      storageBucket:     "YOUR_PROJECT.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId:             "YOUR_APP_ID"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db  = getDatabase(app);
-
-    /* ── DB 경로 ── */
-    const ROOM = 'limbus-room-1';  // 방 ID (여러 방을 쓰려면 변경)
-    const dbChars     = () => ref(db, `${ROOM}/characters`);
-    const dbGameState = () => ref(db, `${ROOM}/gameState`);
-    const dbLog       = () => ref(db, `${ROOM}/log`);
-    const dbImages    = () => ref(db, `${ROOM}/images`);
-
-    /* ── 연결 상태 표시 ── */
-    const connRef = ref(db, '.info/connected');
-    onValue(connRef, snap => {
-      const el = document.getElementById('sync-status');
-      if (!el) return;
-      if (snap.val()) {
-        el.textContent = '● 실시간 동기화 중';
-        el.className = 'sync-status connected';
-      } else {
-        el.textContent = '○ 연결 끊김';
-        el.className = 'sync-status disconnected';
-      }
-    });
-
-    /* ── Firebase 유틸: 전역에 노출 ── */
-    window._fb = {
-      db, ref,
-      onValue, set, push, remove, update, serverTimestamp,
-      dbChars, dbGameState, dbLog, dbImages,
-      ROOM
-    };
-    window.dispatchEvent(new Event('firebase-ready'));
-  </script>
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
+<div id="cursor-layer"></div>
 
 <div class="page-wrapper">
 
@@ -75,12 +23,6 @@
     <div class="header-emblem flip">⬡</div>
   </header>
 
-  <!-- ━━━━━ SYNC STATUS ━━━━━ -->
-  <div class="sync-bar">
-    <span class="sync-status disconnected" id="sync-status">○ Firebase 미설정 (오프라인)</span>
-    <span class="sync-hint">실시간 동기화는 Firebase 설정 후 활성화됩니다</span>
-  </div>
-
   <!-- ━━━━━ PHASE BANNER ━━━━━ -->
   <div class="phase-banner" id="phase-banner">
     <span class="phase-label" id="phase-label">◈ 캐릭터 생성 단계</span>
@@ -90,25 +32,61 @@
     </div>
   </div>
 
+  <!-- ━━━━━ 실시간 공유 바 ━━━━━ -->
+  <div class="rt-bar" id="rt-bar">
+    <div class="rt-left">
+      <span class="rt-title">⌁ 실시간 공유</span>
+      <span class="rt-status" id="rt-status">…</span>
+    </div>
+
+    <!-- 미접속: 입력 폼 -->
+    <div class="rt-form" id="rt-form">
+      <input type="text" id="rt-name" class="rt-input" placeholder="닉네임" maxlength="16"/>
+      <input type="text" id="rt-room" class="rt-input rt-room-input" placeholder="방 코드 (참가 시)" maxlength="8"/>
+      <button class="rt-btn primary" id="rt-create">⬟ 마스터로 방 만들기</button>
+      <button class="rt-btn" id="rt-join">플레이어로 참가</button>
+    </div>
+
+    <!-- 접속 후 -->
+    <div class="rt-connected" id="rt-connected" style="display:none">
+      <span class="rt-meta">방 <strong id="rt-room-show">—</strong></span>
+      <span class="rt-meta">· <strong id="rt-role-show">—</strong></span>
+      <div class="rt-presence" id="rt-presence"></div>
+      <button class="rt-btn small" id="rt-copy">🔗 초대 링크 복사</button>
+      <button class="rt-btn small danger" id="rt-leave">나가기</button>
+    </div>
+  </div>
+
   <!-- ━━━━━ MAIN ━━━━━ -->
   <main>
+
+    <!-- ── 공유 화면 / 장면 이미지 ── -->
+    <section class="share-stage-panel">
+      <div class="panel-header">
+        <span class="panel-icon">▣</span>
+        <h2>공유 화면</h2>
+        <div class="share-controls" id="share-controls">
+          <label class="share-upload-btn">
+            <input type="file" id="share-file" accept="image/*" hidden/>
+            이미지 띄우기
+          </label>
+          <button class="icon-btn small" id="share-clear" disabled>지우기</button>
+        </div>
+      </div>
+      <div class="share-stage" id="share-stage">
+        <img id="share-stage-view" alt="공유 이미지" style="display:none"/>
+        <div class="share-stage-empty" id="share-stage-empty">
+          <span class="share-empty-icon">▣</span>
+          <span>표시 중인 이미지가 없습니다</span>
+          <span class="share-empty-hint">마스터가 이미지를 올리면 모두에게 실시간으로 보입니다 · 드래그&드롭 가능</span>
+        </div>
+        <div class="share-stage-caption" id="share-stage-caption"></div>
+      </div>
+    </section>
 
     <!-- ── 캐릭터 슬롯 컨테이너 ── -->
     <section class="chars-container" id="chars-container">
       <!-- JS로 생성 -->
-    </section>
-
-    <!-- ── 이미지 갤러리 패널 ── -->
-    <section class="gallery-panel" id="gallery-panel">
-      <div class="panel-header">
-        <span class="panel-icon">🖼</span>
-        <h2>이미지 갤러리</h2>
-        <button class="gallery-upload-btn" id="gallery-upload-btn">＋ 이미지 추가</button>
-        <input type="file" id="gallery-file-input" accept="image/*" style="display:none" multiple/>
-      </div>
-      <div class="gallery-grid" id="gallery-grid">
-        <div class="gallery-empty" id="gallery-empty">업로드된 이미지가 없습니다.</div>
-      </div>
     </section>
 
     <!-- ── 마스터 판정 패널 (게임 시작 후 표시) ── -->
@@ -245,36 +223,11 @@
   </div>
 </div>
 
-<!-- ── 이미지 전체화면 라이트박스 ── -->
-<div class="lightbox-overlay" id="lightbox-overlay" style="display:none">
-  <button class="lightbox-close" id="lightbox-close">✕</button>
-  <button class="lightbox-nav prev" id="lightbox-prev">‹</button>
-  <div class="lightbox-content">
-    <img class="lightbox-img" id="lightbox-img" src="" alt=""/>
-    <div class="lightbox-caption" id="lightbox-caption"></div>
-  </div>
-  <button class="lightbox-nav next" id="lightbox-next">›</button>
-</div>
-
-<!-- ── 이미지 이름 편집 모달 ── -->
-<div class="modal-overlay" id="img-name-modal" style="display:none">
-  <div class="modal-box" style="max-width:340px">
-    <div class="modal-header">
-      <span class="modal-icon">✎</span>
-      <h3>이미지 이름 설정</h3>
-      <button class="icon-btn" id="img-name-close">✕</button>
-    </div>
-    <div class="form-group" style="margin-top:.8rem">
-      <label class="form-label">이미지 이름</label>
-      <input type="text" id="img-name-input" class="form-input" placeholder="이름을 입력하세요"/>
-    </div>
-    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem">
-      <button class="phase-btn" id="img-name-cancel">취소</button>
-      <button class="phase-btn primary" id="img-name-confirm">확인</button>
-    </div>
-  </div>
-</div>
-
+<!-- Firebase (실시간 공유) — 설정이 없으면 자동으로 오프라인 모드 -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script src="app.js"></script>
+<script src="realtime.js"></script>
 </body>
 </html>

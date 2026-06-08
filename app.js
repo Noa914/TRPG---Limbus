@@ -29,6 +29,7 @@ const STAT_MIN = 1, STAT_MAX = 100;
 
 /* ─── 전역 상태 ─── */
 let gameStarted = false;
+let isSpectator = false;   // true 면 플레이어(관전자): 마스터 화면을 읽기 전용 미러링
 let characters  = [];   // CharState[]
 let globalLog   = [];
 let masterStat  = 'strength';
@@ -184,6 +185,7 @@ function charCardHTML(ch, idx) {
 function renderChars() {
   const container = document.getElementById('chars-container');
   container.innerHTML = characters.map((ch, i) => charCardHTML(ch, i)).join('');
+  emitChange();
 }
 
 function renderSingleChar(ch) {
@@ -193,6 +195,7 @@ function renderSingleChar(ch) {
   const tmp = document.createElement('div');
   tmp.innerHTML = charCardHTML(ch, idx);
   card.replaceWith(tmp.firstElementChild);
+  emitChange();
 }
 
 function renderGlobalLog() {
@@ -212,18 +215,17 @@ function renderGlobalLog() {
         <span style="color:var(--text-muted);font-size:.62rem;margin-left:auto">${ts}</span>
       </div>`;
   }).join('');
+  emitChange();
 }
 
 /* ══════════════════════════════════════
    게임 단계 전환
 ══════════════════════════════════════ */
 function startGame() {
+  if (isSpectator) return;
   if (characters.length === 0) { alert('캐릭터를 최소 1명 이상 추가하세요.'); return; }
   gameStarted = true;
-  document.getElementById('phase-label').textContent = '◈ 게임 진행 중';
-  document.getElementById('btn-start-game').disabled = true;
-  document.getElementById('btn-add-char').disabled = true;
-  document.getElementById('master-panel').style.display = '';
+  reflectPhase();
   renderChars();
 }
 
@@ -231,6 +233,7 @@ function startGame() {
    마스터 판정 실행
 ══════════════════════════════════════ */
 function doMasterRoll() {
+  if (isSpectator) return;
   const reason = document.getElementById('master-reason').value.trim();
   const dcRaw  = parseInt(document.getElementById('master-dc').value);
   const dc     = isNaN(dcRaw) ? null : dcRaw;
@@ -341,6 +344,7 @@ function spendStarlight(charId, callback) {
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-action]');
   if (!t) return;
+  if (isSpectator) return;            // 관전자(플레이어)는 조작 불가
   const action = t.dataset.action;
   const id     = parseInt(t.dataset.id);
 
@@ -458,6 +462,7 @@ document.getElementById('chars-container').addEventListener('change', e => {
   if (t.dataset.field === 'affil') {
     ch.affil = t.value;
   }
+  emitChange();
 });
 document.getElementById('chars-container').addEventListener('input', e => {
   const t = e.target;
@@ -469,6 +474,7 @@ document.getElementById('chars-container').addEventListener('input', e => {
     const titleEl = document.getElementById(`ctitle-${ch.id}`);
     if (titleEl) titleEl.textContent = ch.name || '이름 없음';
   }
+  emitChange();
 });
 
 /* ── 마스터 패널: 스탯 선택 ── */
@@ -477,6 +483,7 @@ document.querySelectorAll('.stat-btn').forEach(btn => {
     document.querySelectorAll('.stat-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     masterStat = btn.dataset.stat;
+    emitChange();
   });
 });
 
@@ -486,18 +493,24 @@ document.querySelectorAll('.dice-btn').forEach(btn => {
     document.querySelectorAll('.dice-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     masterDice = parseInt(btn.dataset.dice);
+    emitChange();
   });
 });
 
 /* ── DC ── */
 document.getElementById('master-dc-clear').addEventListener('click', () => {
   document.getElementById('master-dc').value = '';
+  emitChange();
 });
 document.querySelectorAll('.dc-preset').forEach(btn => {
   btn.addEventListener('click', () => {
     document.getElementById('master-dc').value = btn.dataset.dc;
+    emitChange();
   });
 });
+/* 판정 내용/DC 입력도 동기화 */
+document.getElementById('master-reason').addEventListener('input', emitChange);
+document.getElementById('master-dc').addEventListener('input', emitChange);
 
 /* ── 전체 판정 실행 ── */
 document.getElementById('roll-all-btn').addEventListener('click', doMasterRoll);
@@ -510,7 +523,7 @@ document.getElementById('global-log-clear').addEventListener('click', () => {
 
 /* ── 캐릭터 추가 ── */
 document.getElementById('btn-add-char').addEventListener('click', () => {
-  if (gameStarted) return;
+  if (gameStarted || isSpectator) return;
   if (characters.length >= 10) { alert('캐릭터는 최대 10명까지 추가할 수 있습니다.'); return; }
   characters.push(createChar());
   renderChars();
@@ -519,354 +532,194 @@ document.getElementById('btn-add-char').addEventListener('click', () => {
 /* ── 게임 시작 ── */
 document.getElementById('btn-start-game').addEventListener('click', startGame);
 
-/* ─────────────────────────────────────────
-   Firebase 실시간 동기화
-───────────────────────────────────────── */
-let _fbReady = false;
-let _localChange = false;  // 로컬→DB 쓰기 중 루프 방지
-
-function serializeChars() {
-  return characters.map(ch => ({
-    id:       ch.id,
-    name:     ch.name,
-    affil:    ch.affil,
-    stats:    ch.stats,
-    starlight: ch.starlight,
-    lastRoll: ch.lastRoll ? {
-      raw: ch.lastRoll.raw, mod: ch.lastRoll.mod, final: ch.lastRoll.final,
-      dice: ch.lastRoll.dice, stat: ch.lastRoll.stat, statLabel: ch.lastRoll.statLabel,
-      statVal: ch.lastRoll.statVal, dc: ch.lastRoll.dc, verdict: ch.lastRoll.verdict,
-      resultClass: ch.lastRoll.resultClass, charName: ch.lastRoll.charName,
-      reason: ch.lastRoll.reason, ts: ch.lastRoll.ts ? ch.lastRoll.ts.getTime() : null
-    } : null
-  }));
-}
-
-function deserializeChars(data) {
-  if (!data || !Array.isArray(data)) return [];
-  return data.map(ch => ({
-    ...ch,
-    lastRoll: ch.lastRoll ? {
-      ...ch.lastRoll,
-      ts: ch.lastRoll.ts ? new Date(ch.lastRoll.ts) : new Date()
-    } : null
-  }));
-}
-
-/* DB에 현재 상태 푸시 */
-function pushStateToDb() {
-  if (!_fbReady) return;
-  const fb = window._fb;
-  _localChange = true;
-  fb.set(fb.dbChars(), serializeChars())
-    .finally(() => { setTimeout(() => { _localChange = false; }, 200); });
-  fb.set(fb.dbGameState(), { started: gameStarted });
-  fb.set(fb.dbLog(), globalLog.map(r => ({
-    ...r, ts: r.ts ? r.ts.getTime() : null
-  })));
-}
-
-/* DB → 로컬 상태 반영 */
-function applyRemoteState(remoteChars, remoteGameState, remoteLog) {
-  if (_localChange) return;
-
-  // 캐릭터
-  if (remoteChars) {
-    const incoming = deserializeChars(remoteChars);
-    // id 카운터 동기화
-    const maxId = incoming.reduce((m, c) => Math.max(m, c.id), 0);
-    if (maxId >= _idCnt) _idCnt = maxId;
-    characters = incoming;
-    renderChars();
-  }
-  // 게임 상태
-  if (remoteGameState && remoteGameState.started && !gameStarted) {
-    gameStarted = true;
-    document.getElementById('phase-label').textContent = '◈ 게임 진행 중';
-    document.getElementById('btn-start-game').disabled = true;
-    document.getElementById('btn-add-char').disabled = true;
-    document.getElementById('master-panel').style.display = '';
-    renderChars();
-  }
-  // 로그
-  if (remoteLog && Array.isArray(remoteLog)) {
-    globalLog = remoteLog.map(r => ({ ...r, ts: r.ts ? new Date(r.ts) : new Date() }));
-    renderGlobalLog();
-  }
-}
-
-/* Firebase 초기화 후 리스너 등록 */
-window.addEventListener('firebase-ready', () => {
-  _fbReady = true;
-  const fb = window._fb;
-
-  // 실시간 리스너 — characters
-  fb.onValue(fb.dbChars(), snap => {
-    if (_localChange) return;
-    const data = snap.val();
-    if (data) {
-      const incoming = deserializeChars(data);
-      const maxId = incoming.reduce((m, c) => Math.max(m, c.id), 0);
-      if (maxId >= _idCnt) _idCnt = maxId;
-      characters = incoming;
-      renderChars();
-    }
-  });
-
-  // 실시간 리스너 — gameState
-  fb.onValue(fb.dbGameState(), snap => {
-    const data = snap.val();
-    if (data && data.started && !gameStarted) {
-      gameStarted = true;
-      document.getElementById('phase-label').textContent = '◈ 게임 진행 중';
-      document.getElementById('btn-start-game').disabled = true;
-      document.getElementById('btn-add-char').disabled = true;
-      document.getElementById('master-panel').style.display = '';
-      renderChars();
-    }
-  });
-
-  // 실시간 리스너 — log
-  fb.onValue(fb.dbLog(), snap => {
-    if (_localChange) return;
-    const data = snap.val();
-    if (data && Array.isArray(data)) {
-      globalLog = data.map(r => ({ ...r, ts: r.ts ? new Date(r.ts) : new Date() }));
-      renderGlobalLog();
-    }
-  });
-
-  // 실시간 리스너 — images
-  fb.onValue(fb.dbImages(), snap => {
-    const data = snap.val();
-    renderGalleryFromDb(data);
-  });
-
-  // 초기 상태 업로드 (처음 접속자만 — DB가 비어있을 때)
-  fb.onValue(fb.dbChars(), snap => {
-    if (!snap.val() && characters.length > 0) {
-      pushStateToDb();
-    }
-  }, { onlyOnce: true });
-});
-
-/* 원본 함수들을 래핑해서 변경 시 DB 동기화 */
-const _origStartGame = startGame;
-startGame = function() {
-  _origStartGame();
-  pushStateToDb();
-};
-
-/* 캐릭터 추가/삭제/변경 후 동기화 (이벤트 리스너 오버라이드) */
-function syncAfterChange() { pushStateToDb(); }
-
-document.getElementById('btn-add-char').addEventListener('click', () => {
-  setTimeout(syncAfterChange, 50);
-});
-
-/* 이름·소속 변경 감지 동기화 */
-document.getElementById('chars-container').addEventListener('change', () => {
-  setTimeout(syncAfterChange, 50);
-});
-document.getElementById('chars-container').addEventListener('input', () => {
-  clearTimeout(window._syncTimer);
-  window._syncTimer = setTimeout(syncAfterChange, 600);
-});
-
-/* ─────────────────────────────────────────
-   이미지 갤러리
-───────────────────────────────────────── */
-let galleryImages = [];   // [{ id, name, dataUrl }]
-let lightboxIdx   = 0;
-let pendingImgObj = null; // 이름 입력 대기 중 이미지
-
-/* ── 갤러리 렌더 ── */
-function renderGallery() {
-  const grid  = document.getElementById('gallery-grid');
-  const empty = document.getElementById('gallery-empty');
-  if (!galleryImages.length) {
-    empty.style.display = '';
-    grid.innerHTML = '';
-    grid.appendChild(empty);
-    return;
-  }
-  empty.style.display = 'none';
-  grid.innerHTML = galleryImages.map((img, i) => `
-    <div class="gallery-item" data-idx="${i}">
-      <div class="gallery-thumb-wrap">
-        <img class="gallery-thumb" src="${img.dataUrl}" alt="${img.name}" loading="lazy"/>
-        <button class="gallery-fullscreen-btn" data-action="gallery-open" data-idx="${i}" title="전체화면">⛶</button>
-        <button class="gallery-delete-btn" data-action="gallery-delete" data-id="${img.id}" title="삭제">✕</button>
-      </div>
-      <div class="gallery-name" data-action="gallery-rename" data-idx="${i}">${img.name || '이름 없음'}</div>
-    </div>`).join('');
-}
-
-/* DB에서 갤러리 수신 */
-function renderGalleryFromDb(data) {
-  if (!data) { galleryImages = []; renderGallery(); return; }
-  // Firebase object → array
-  galleryImages = Object.entries(data).map(([id, v]) => ({ id, ...v }));
-  renderGallery();
-}
-
-/* ── 파일 업로드 처리 ── */
-document.getElementById('gallery-upload-btn').addEventListener('click', () => {
-  document.getElementById('gallery-file-input').click();
-});
-
-document.getElementById('gallery-file-input').addEventListener('change', async e => {
-  const files = Array.from(e.target.files);
-  e.target.value = '';
-  for (const file of files) {
-    const dataUrl = await readFileAsDataUrl(file);
-    const defaultName = file.name.replace(/\.[^/.]+$/, '');
-    // 이름 입력 모달 띄우기
-    await promptImageName(defaultName, dataUrl);
-  }
-});
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/* ── 이미지 이름 모달 ── */
-function promptImageName(defaultName, dataUrl) {
-  return new Promise(resolve => {
-    pendingImgObj = { dataUrl, resolve };
-    document.getElementById('img-name-input').value = defaultName;
-    document.getElementById('img-name-modal').style.display = 'flex';
-    document.getElementById('img-name-input').focus();
-    document.getElementById('img-name-input').select();
-  });
-}
-
-function confirmImageName() {
-  if (!pendingImgObj) return;
-  const name = document.getElementById('img-name-input').value.trim() || '이름 없음';
-  const { dataUrl, resolve } = pendingImgObj;
-  pendingImgObj = null;
-  document.getElementById('img-name-modal').style.display = 'none';
-
-  const newImg = { name, dataUrl, createdAt: Date.now() };
-
-  if (_fbReady) {
-    const fb = window._fb;
-    fb.push(fb.dbImages(), newImg);
-    // onValue 리스너가 자동으로 갱신함
-  } else {
-    const id = 'local_' + Date.now();
-    galleryImages.push({ id, ...newImg });
-    renderGallery();
-  }
-  resolve();
-}
-
-document.getElementById('img-name-confirm').addEventListener('click', confirmImageName);
-document.getElementById('img-name-cancel').addEventListener('click', () => {
-  if (pendingImgObj) { pendingImgObj.resolve(); pendingImgObj = null; }
-  document.getElementById('img-name-modal').style.display = 'none';
-});
-document.getElementById('img-name-close').addEventListener('click', () => {
-  if (pendingImgObj) { pendingImgObj.resolve(); pendingImgObj = null; }
-  document.getElementById('img-name-modal').style.display = 'none';
-});
-document.getElementById('img-name-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') confirmImageName();
-});
-
-/* ── 갤러리 이벤트 위임 ── */
-document.getElementById('gallery-grid').addEventListener('click', e => {
-  const t = e.target.closest('[data-action]');
-  if (!t) return;
-  const action = t.dataset.action;
-
-  if (action === 'gallery-open') {
-    openLightbox(parseInt(t.dataset.idx));
-  }
-  if (action === 'gallery-delete') {
-    const imgId = t.dataset.id;
-    if (!confirm('이미지를 삭제하시겠습니까?')) return;
-    if (_fbReady && !imgId.startsWith('local_')) {
-      const fb = window._fb;
-      fb.remove(fb.ref(fb.db, `${fb.ROOM}/images/${imgId}`));
-    } else {
-      galleryImages = galleryImages.filter(i => i.id !== imgId);
-      renderGallery();
-    }
-  }
-  if (action === 'gallery-rename') {
-    const idx = parseInt(t.dataset.idx);
-    const img = galleryImages[idx];
-    if (!img) return;
-    const newName = prompt('새 이름을 입력하세요:', img.name);
-    if (newName === null) return;
-    const trimmed = newName.trim() || '이름 없음';
-    if (_fbReady && !img.id.startsWith('local_')) {
-      const fb = window._fb;
-      fb.update(fb.ref(fb.db, `${fb.ROOM}/images/${img.id}`), { name: trimmed });
-    } else {
-      galleryImages[idx].name = trimmed;
-      renderGallery();
-    }
-  }
-});
-
-/* ── 라이트박스 ── */
-function openLightbox(idx) {
-  lightboxIdx = idx;
-  updateLightbox();
-  document.getElementById('lightbox-overlay').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-}
-function closeLightbox() {
-  document.getElementById('lightbox-overlay').style.display = 'none';
-  document.body.style.overflow = '';
-}
-function updateLightbox() {
-  const img = galleryImages[lightboxIdx];
-  if (!img) return;
-  document.getElementById('lightbox-img').src     = img.dataUrl;
-  document.getElementById('lightbox-caption').textContent = img.name || '';
-  document.getElementById('lightbox-prev').style.opacity = lightboxIdx > 0 ? '1' : '0.3';
-  document.getElementById('lightbox-next').style.opacity = lightboxIdx < galleryImages.length - 1 ? '1' : '0.3';
-}
-
-document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
-document.getElementById('lightbox-overlay').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeLightbox();
-});
-document.getElementById('lightbox-prev').addEventListener('click', () => {
-  if (lightboxIdx > 0) { lightboxIdx--; updateLightbox(); }
-});
-document.getElementById('lightbox-next').addEventListener('click', () => {
-  if (lightboxIdx < galleryImages.length - 1) { lightboxIdx++; updateLightbox(); }
-});
-document.addEventListener('keydown', e => {
-  const lb = document.getElementById('lightbox-overlay');
-  if (lb.style.display === 'none') return;
-  if (e.key === 'Escape')     closeLightbox();
-  if (e.key === 'ArrowLeft')  { if (lightboxIdx > 0) { lightboxIdx--; updateLightbox(); } }
-  if (e.key === 'ArrowRight') { if (lightboxIdx < galleryImages.length - 1) { lightboxIdx++; updateLightbox(); } }
-});
-
-/* ── 판정 실행 후 DB 동기화 (doMasterRoll 오버라이드) ── */
-const _origDoMasterRoll = doMasterRoll;
-doMasterRoll = function() {
-  _origDoMasterRoll();
-  setTimeout(syncAfterChange, 80);
-};
-
-/* ── 글로벌 로그 초기화 후 DB 동기화 ── */
-document.getElementById('global-log-clear').addEventListener('click', () => {
-  setTimeout(syncAfterChange, 50);
-});
-
 /* ── 초기 캐릭터 1명 생성 ── */
 characters.push(createChar());
 renderChars();
+
+
+/* ══════════════════════════════════════════════════════════
+   실시간 공유 연동 (realtime.js 와 통신) · 이미지 공유 · 관전자
+   ══════════════════════════════════════════════════════════ */
+
+/* 상태 변경 알림 — realtime.js 가 'limbus:change' 를 듣고 마스터 상태를 동기화 */
+function emitChange() {
+  document.dispatchEvent(new CustomEvent('limbus:change'));
+}
+
+/* 단계(phase) UI 반영 — 시작 전/후 + 관전자 여부 */
+function reflectPhase() {
+  const label = document.getElementById('phase-label');
+  const panel = document.getElementById('master-panel');
+  const sg = document.getElementById('btn-start-game');
+  const ac = document.getElementById('btn-add-char');
+  if (label) label.textContent = gameStarted ? '◈ 게임 진행 중' : '◈ 캐릭터 생성 단계';
+  // 마스터 패널은 게임 시작 후 노출 (관전자도 결과/로그를 보도록 노출)
+  if (panel) panel.style.display = gameStarted ? '' : 'none';
+  if (sg) sg.disabled = gameStarted || isSpectator;
+  if (ac) ac.disabled = gameStarted || isSpectator;
+}
+
+/* 마스터 패널의 선택 상태(능력치/주사위/내용/DC)를 현재 전역값에 맞춰 표시 */
+function syncMasterPanelUI() {
+  document.querySelectorAll('.stat-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.stat === masterStat));
+  document.querySelectorAll('.dice-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.dice) === masterDice));
+}
+
+/* ── 직렬화 (마스터 → 모든 플레이어) ── */
+function getState() {
+  return {
+    gameStarted,
+    masterStat,
+    masterDice,
+    masterReason: (document.getElementById('master-reason') || {}).value || '',
+    masterDc:     (document.getElementById('master-dc')     || {}).value || '',
+    characters,           // Date(ts) 는 JSON.stringify 가 ISO 문자열로 변환
+    globalLog,
+  };
+}
+
+/* ── 역직렬화 적용 (플레이어 측) ── */
+function applyState(snap) {
+  if (!snap) return;
+  gameStarted = !!snap.gameStarted;
+  if (snap.masterStat) masterStat = snap.masterStat;
+  if (snap.masterDice) masterDice = snap.masterDice;
+
+  const reasonEl = document.getElementById('master-reason');
+  const dcEl     = document.getElementById('master-dc');
+  if (reasonEl) reasonEl.value = snap.masterReason || '';
+  if (dcEl)     dcEl.value     = snap.masterDc || '';
+
+  characters = (snap.characters || []).map(c => ({
+    ...c,
+    lastRoll: c.lastRoll ? { ...c.lastRoll, ts: new Date(c.lastRoll.ts) } : null,
+  }));
+  globalLog = (snap.globalLog || []).map(r => ({ ...r, ts: new Date(r.ts) }));
+
+  syncMasterPanelUI();
+  reflectPhase();
+  renderChars();        // 내부에서 emitChange 호출되지만 플레이어는 push 안 함
+  renderGlobalLog();
+}
+
+/* ── 관전자(플레이어) 모드 진입 ── */
+function enterSpectator() {
+  isSpectator = true;
+  document.body.classList.add('spectator');
+  reflectPhase();
+}
+
+/* ══════════════════════════════════════
+   공유 이미지(장면) 표시
+══════════════════════════════════════ */
+function setSharedImage(dataUrl, name, visible) {
+  const view  = document.getElementById('share-stage-view');
+  const empty = document.getElementById('share-stage-empty');
+  const cap   = document.getElementById('share-stage-caption');
+  const clearBtn = document.getElementById('share-clear');
+  if (!view) return;
+  if (dataUrl && visible !== false) {
+    view.src = dataUrl;
+    view.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (cap) cap.textContent = name || '';
+    if (clearBtn) clearBtn.disabled = false;
+  } else {
+    view.removeAttribute('src');
+    view.style.display = 'none';
+    if (empty) empty.style.display = 'flex';
+    if (cap) cap.textContent = '';
+    if (clearBtn) clearBtn.disabled = true;
+  }
+}
+
+/* 이미지 압축: 긴 변을 maxDim 으로 줄이고 JPEG 로 인코딩 (실시간 전송 부담 완화) */
+function compressImage(file, maxDim = 1400, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale));
+      h = Math.max(1, Math.round(h * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#0b0b16';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      let q = quality;
+      let out = cv.toDataURL('image/jpeg', q);
+      // 실시간 DB 부담을 줄이기 위해 너무 크면 더 압축
+      while (out.length > 900000 && q > 0.4) {
+        q -= 0.12;
+        out = cv.toDataURL('image/jpeg', q);
+      }
+      resolve(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 불러오지 못했습니다.')); };
+    img.src = url;
+  });
+}
+
+/* 이미지 선택 → (연결 시) 브로드캐스트 + 로컬 표시 */
+async function handleImageFile(file) {
+  if (!file || isSpectator) return;
+  if (!file.type.startsWith('image/')) { alert('이미지 파일만 업로드할 수 있습니다.'); return; }
+  try {
+    const dataUrl = await compressImage(file);
+    if (LIMBUS.broadcastImage) LIMBUS.broadcastImage(dataUrl, file.name, true);
+    setSharedImage(dataUrl, file.name, true);   // 즉시 로컬 반영
+  } catch (err) {
+    alert(err.message || '이미지 처리 중 오류가 발생했습니다.');
+  }
+}
+
+/* 이미지 입력 / 지우기 버튼 연결 */
+(function bindShareControls() {
+  const input = document.getElementById('share-file');
+  const drop  = document.getElementById('share-stage');
+  const clearBtn = document.getElementById('share-clear');
+
+  if (input) {
+    input.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) handleImageFile(f);
+      input.value = '';   // 같은 파일 재선택 허용
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (isSpectator) return;
+      if (LIMBUS.broadcastImage) LIMBUS.broadcastImage(null);
+      setSharedImage(null);
+    });
+  }
+  // 드래그&드롭
+  if (drop) {
+    ['dragover', 'dragenter'].forEach(ev =>
+      drop.addEventListener(ev, e => { if (!isSpectator) { e.preventDefault(); drop.classList.add('drag-over'); } }));
+    ['dragleave', 'drop'].forEach(ev =>
+      drop.addEventListener(ev, () => drop.classList.remove('drag-over')));
+    drop.addEventListener('drop', e => {
+      if (isSpectator) return;
+      e.preventDefault();
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleImageFile(f);
+    });
+  }
+})();
+
+/* ── 공개 API (realtime.js 에서 사용) ── */
+const LIMBUS = window.LIMBUS = {
+  broadcastImage: null,   // realtime.js 가 마스터 연결 시 주입
+  getState,
+  applyState,
+  setSharedImage,
+  enterSpectator,
+  emitChange,
+};
