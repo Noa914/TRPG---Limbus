@@ -27,9 +27,16 @@
   <div class="phase-banner" id="phase-banner">
     <span class="phase-label" id="phase-label">◈ 캐릭터 생성 단계</span>
     <div class="phase-btns">
+      <a class="phase-btn link" href="scenarios/index.html">📜 시나리오</a>
       <button class="phase-btn" id="btn-add-char">＋ 캐릭터 추가</button>
       <button class="phase-btn primary" id="btn-start-game">게임 시작 ▶</button>
     </div>
+  </div>
+
+  <!-- ━━━━━ 턴 배너 (모두에게 표시) ━━━━━ -->
+  <div class="turn-banner" id="turn-banner" style="display:none">
+    <span class="turn-banner-icon">▶</span>
+    <span class="turn-banner-text" id="turn-banner-text">—</span>
   </div>
 
   <!-- ━━━━━ 실시간 공유 바 ━━━━━ -->
@@ -37,6 +44,7 @@
     <div class="rt-left">
       <span class="rt-title">⌁ 실시간 공유</span>
       <span class="rt-status" id="rt-status">…</span>
+      <button class="rt-btn small" id="sound-toggle" title="주사위 소리 켜기/끄기">🔊</button>
     </div>
 
     <!-- 미접속: 입력 폼 -->
@@ -75,10 +83,14 @@
       </div>
       <div class="share-stage" id="share-stage">
         <img id="share-stage-view" alt="공유 이미지" style="display:none"/>
+        <div class="scene-overlay" id="scene-overlay" style="display:none">
+          <div class="scene-title" id="scene-title"></div>
+          <div class="scene-body" id="scene-body"></div>
+        </div>
         <div class="share-stage-empty" id="share-stage-empty">
           <span class="share-empty-icon">▣</span>
-          <span>표시 중인 이미지가 없습니다</span>
-          <span class="share-empty-hint">마스터가 이미지를 올리면 모두에게 실시간으로 보입니다 · 드래그&드롭 가능</span>
+          <span>표시 중인 화면이 없습니다</span>
+          <span class="share-empty-hint">마스터가 이미지나 시나리오 장면을 띄우면 모두에게 실시간으로 보입니다 · 드래그&드롭 가능</span>
         </div>
         <div class="share-stage-caption" id="share-stage-caption"></div>
       </div>
@@ -95,6 +107,33 @@
         <span class="panel-icon">⬟</span>
         <h2>마스터 판정 설정</h2>
         <span class="master-badge">MASTER</span>
+      </div>
+
+      <!-- ── 턴 제어 ── -->
+      <div class="turn-controls" id="turn-controls" style="display:none">
+        <span class="turn-controls-label">턴</span>
+        <button class="turn-btn" data-action="turn-start">⟳ 턴 시작/처음</button>
+        <button class="turn-btn" data-action="turn-prev">◀ 이전</button>
+        <button class="turn-btn" data-action="turn-next">다음 ▶</button>
+        <button class="turn-btn ghost" data-action="turn-end">턴 종료</button>
+      </div>
+
+      <!-- ── 시나리오 ── -->
+      <div class="scenario-block">
+        <div class="scenario-head">
+          <span class="scenario-label">📜 시나리오</span>
+          <select class="form-select scenario-select" id="scenario-select">
+            <option value="">— 시나리오 선택 —</option>
+          </select>
+          <label class="scenario-import-btn">
+            <input type="file" id="scenario-import" accept=".json,application/json" hidden/>
+            파일에서 불러오기
+          </label>
+          <a class="scenario-make-link" href="scenarios/index.html">＋ 제작/관리</a>
+        </div>
+        <div class="scene-list" id="scene-list">
+          <div class="scene-list-empty">시나리오를 선택하면 장면이 표시됩니다.</div>
+        </div>
       </div>
 
       <div class="master-grid">
@@ -220,6 +259,15 @@
     <div class="modal-starlight-count">
       보유 별빛: <strong id="modal-starlight-val">0</strong>
     </div>
+  </div>
+</div>
+
+<!-- ── 턴 안내 오버레이 ── -->
+<div class="turn-announce" id="turn-announce">
+  <div class="turn-announce-inner">
+    <span class="turn-announce-num" id="turn-announce-num">NO.01</span>
+    <span class="turn-announce-name" id="turn-announce-name">—</span>
+    <span class="turn-announce-sub">의 턴</span>
   </div>
 </div>
 

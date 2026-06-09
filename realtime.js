@@ -208,20 +208,24 @@
     RT.base.child('cursors').on('child_changed', s => upsertCursor(s.key, s.val()));
     RT.base.child('cursors').on('child_removed', s => removeCursor(s.key));
 
-    /* 공유 이미지 — 모두 수신 */
-    RT.base.child('image').on('value', s => {
+    /* 공유 장면(이미지+제목+본문) — 모두 수신 */
+    RT.base.child('stage').on('value', s => {
       const v = s.val();
-      if (v && v.dataUrl) window.LIMBUS.setSharedImage(v.dataUrl, v.name, v.visible !== false);
-      else window.LIMBUS.setSharedImage(null);
+      window.LIMBUS.setSharedStage(v && (v.image || v.title || v.text) ? v : null);
     });
 
     if (role === 'master') {
       RT.base.child('meta').update({ masterId: RT.clientId, t: Date.now() });
-      /* 마스터: 이미지 브로드캐스트 주입 */
-      window.LIMBUS.broadcastImage = (dataUrl, imgName, visible) => {
-        RT.base.child('image').set(
-          dataUrl ? { dataUrl, name: imgName || '', visible: visible !== false, ts: Date.now() }
-                  : null);
+      /* 마스터: 장면 브로드캐스트 주입 */
+      window.LIMBUS.broadcastStage = (stage) => {
+        RT.base.child('stage').set(
+          stage ? {
+            image: stage.image || null,
+            title: stage.title || '',
+            text:  stage.text  || '',
+            name:  stage.name  || '',
+            ts: Date.now()
+          } : null);
       };
       /* 마스터: 상태 변경 시 푸시 */
       document.addEventListener('limbus:change', scheduleStatePush);
