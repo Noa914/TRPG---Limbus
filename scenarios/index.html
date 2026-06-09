@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>시나리오 라이브러리 · LIMBUS</title>
+  <link rel="stylesheet" href="../style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    .lib-wrap{max-width:1100px;margin:0 auto;padding:1.5rem 1.2rem 4rem;}
+    .lib-head{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin:1.4rem 0 1.8rem;}
+    .lib-title{font-family:var(--font-d);font-size:1.8rem;font-weight:900;letter-spacing:.1em;color:var(--gold-bright);}
+    .lib-sub{font-size:.74rem;color:var(--text-dim);letter-spacing:.06em;}
+    .lib-actions{margin-left:auto;display:flex;gap:.6rem;flex-wrap:wrap;}
+    .lib-btn{text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text-dim);font-family:var(--font-ui);font-size:.78rem;padding:.5rem .9rem;cursor:pointer;transition:all var(--t);}
+    .lib-btn:hover{border-color:var(--gold-dim);color:var(--gold);}
+    .lib-btn.primary{background:var(--gold-bg);border-color:var(--gold-dim);color:var(--gold);}
+    .lib-btn.primary:hover{box-shadow:0 0 14px rgba(201,168,76,.3);color:var(--gold-bright);}
+    .scn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.1rem;}
+    .scn-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:1.1rem;cursor:pointer;transition:all var(--t);position:relative;overflow:hidden;}
+    .scn-card:hover{border-color:var(--gold-dim);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.4),0 0 18px rgba(201,168,76,.1);}
+    .scn-card::after{content:'';position:absolute;top:0;left:0;width:100%;height:2px;background:linear-gradient(90deg,var(--gold),transparent);opacity:.6;}
+    .scn-card-title{font-family:var(--font-d);font-size:1.1rem;font-weight:700;color:var(--gold-bright);margin-bottom:.3rem;}
+    .scn-card-author{font-size:.66rem;color:var(--starlight);letter-spacing:.05em;margin-bottom:.6rem;}
+    .scn-card-desc{font-size:.76rem;color:var(--text-dim);line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+    .scn-card-meta{margin-top:.8rem;font-size:.66rem;color:var(--text-muted);}
+    .lib-empty{grid-column:1/-1;text-align:center;color:var(--text-muted);padding:3rem 1rem;line-height:1.8;}
+    /* 상세 모달 */
+    .scn-detail{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.8);padding:1.2rem;}
+    .scn-detail.open{display:flex;}
+    .scn-detail-box{background:var(--bg-panel);border:1px solid var(--gold-dim);border-radius:var(--rl);max-width:720px;width:100%;max-height:86vh;overflow:auto;padding:1.6rem;}
+    .scn-detail-head{display:flex;align-items:flex-start;gap:1rem;margin-bottom:1.2rem;}
+    .scn-detail-head h2{font-family:var(--font-d);font-size:1.4rem;color:var(--gold-bright);}
+    .scn-scene{background:var(--bg-panel-alt);border:1px solid var(--border);border-radius:var(--r);padding:1rem;margin-bottom:.9rem;}
+    .scn-scene-title{font-weight:700;color:var(--text);margin-bottom:.5rem;display:flex;gap:.5rem;align-items:center;}
+    .scn-scene-num{width:1.6rem;height:1.6rem;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--gold-bg);border:1px solid var(--gold-dim);color:var(--gold);font-family:var(--font-d);font-size:.74rem;}
+    .scn-scene-body{font-size:.84rem;color:var(--text-dim);line-height:1.7;white-space:pre-wrap;}
+    .scn-scene-img{margin-top:.7rem;}
+    .scn-scene-img img{max-width:100%;border-radius:var(--r);border:1px solid var(--border);}
+    .scn-note{font-size:.72rem;color:var(--text-muted);background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);padding:.7rem .9rem;margin-top:1rem;line-height:1.7;}
+  </style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="lib-wrap">
+  <header class="lib-head">
+    <div>
+      <div class="lib-title">📜 시나리오 라이브러리</div>
+      <div class="lib-sub">제작 → 추출 → scenarios 폴더에 넣기 → 매니페스트 등록 → 새로고침 → 게임에서 띄우기</div>
+    </div>
+    <div class="lib-actions">
+      <a class="lib-btn" href="../index.html">◀ 게임으로</a>
+      <label class="lib-btn">파일 불러오기<input type="file" id="lib-import" accept=".json,application/json" hidden/></label>
+      <a class="lib-btn primary" href="create.html">＋ 새 시나리오 제작</a>
+    </div>
+  </header>
+
+  <div class="scn-grid" id="scn-grid">
+    <div class="lib-empty">불러오는 중…</div>
+  </div>
+</div>
+
+<!-- 상세 -->
+<div class="scn-detail" id="scn-detail">
+  <div class="scn-detail-box" id="scn-detail-box"></div>
+</div>
+
+<script>
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+let loaded = [];
+
+async function load(){
+  const grid = document.getElementById('scn-grid');
+  let items = [];
+  try {
+    const res = await fetch('manifest.json',{cache:'no-store'});
+    if(res.ok){
+      const files = await res.json();
+      for(const f of (Array.isArray(files)?files:[])){
+        try{ const r = await fetch(f,{cache:'no-store'}); if(r.ok){ const d=await r.json(); d._file=f; items.push(d); } }catch(e){}
+      }
+    }
+  } catch(e){}
+  loaded = items;
+  render();
+}
+
+function render(){
+  const grid = document.getElementById('scn-grid');
+  if(!loaded.length){
+    grid.innerHTML = `<div class="lib-empty">아직 등록된 시나리오가 없습니다.<br/>“＋ 새 시나리오 제작”으로 만들어 추출한 뒤, <b>scenarios</b> 폴더에 넣고 <b>manifest.json</b>에 파일명을 추가하세요.<br/>(로컬 file:// 로 열면 목록이 안 보일 수 있습니다 — GitHub Pages 등 http 환경에서 확인하세요.)</div>`;
+    return;
+  }
+  grid.innerHTML = loaded.map((s,i)=>`
+    <div class="scn-card" data-i="${i}">
+      <div class="scn-card-title">${esc(s.title||'제목 없음')}</div>
+      <div class="scn-card-author">by ${esc(s.author||'익명')}</div>
+      <div class="scn-card-desc">${esc(s.description||'')}</div>
+      <div class="scn-card-meta">장면 ${Array.isArray(s.scenes)?s.scenes.length:0}개 · ${esc(s._file||'')}</div>
+    </div>`).join('');
+  grid.querySelectorAll('.scn-card').forEach(c=>c.addEventListener('click',()=>openDetail(parseInt(c.dataset.i))));
+}
+
+function openDetail(i){
+  const s = loaded[i]; if(!s) return;
+  const box = document.getElementById('scn-detail-box');
+  const scenes = (s.scenes||[]).map((sc,n)=>`
+    <div class="scn-scene">
+      <div class="scn-scene-title"><span class="scn-scene-num">${n+1}</span>${esc(sc.title||'(제목 없음)')}</div>
+      ${sc.body?`<div class="scn-scene-body">${esc(sc.body)}</div>`:''}
+      ${sc.image?`<div class="scn-scene-img"><img src="${sc.image}" alt=""/></div>`:''}
+    </div>`).join('');
+  box.innerHTML = `
+    <div class="scn-detail-head">
+      <div>
+        <h2>${esc(s.title||'제목 없음')}</h2>
+        <div class="scn-card-author">by ${esc(s.author||'익명')}</div>
+      </div>
+      <button class="lib-btn" style="margin-left:auto" id="scn-detail-close">✕ 닫기</button>
+    </div>
+    <div class="scn-card-desc" style="-webkit-line-clamp:unset;margin-bottom:1.2rem">${esc(s.description||'')}</div>
+    ${scenes||'<div class="lib-empty">장면이 없습니다.</div>'}
+    <div class="scn-note">이 시나리오를 게임에서 띄우려면: <b>scenarios/${esc(s._file||'파일.json')}</b> 가 존재하고 <b>manifest.json</b>에 등록돼 있어야 합니다. 게임 화면의 마스터 패널 → 시나리오 선택에서 사용하세요.</div>`;
+  document.getElementById('scn-detail').classList.add('open');
+  document.getElementById('scn-detail-close').addEventListener('click',closeDetail);
+}
+function closeDetail(){ document.getElementById('scn-detail').classList.remove('open'); }
+document.getElementById('scn-detail').addEventListener('click',e=>{ if(e.target.id==='scn-detail') closeDetail(); });
+
+/* 파일 불러오기 → 임시로 목록에 추가 (미리보기용) */
+document.getElementById('lib-import').addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ const d=JSON.parse(rd.result); d._file='(불러옴) '+f.name; loaded.push(d); render(); }catch(err){ alert('JSON 파싱 실패: '+err.message); } };
+  rd.readAsText(f); e.target.value='';
+});
+
+load();
+
+/* 배경 파티클 (가벼운 버전) */
+(function(){
+  const c=document.getElementById('bg-canvas'); if(!c)return; const x=c.getContext('2d');
+  let w,h,ps=[];
+  function rs(){ w=c.width=innerWidth; h=c.height=innerHeight; ps=Array.from({length:60},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.4+.3,s:Math.random()*.3+.05})); }
+  function loop(){ x.clearRect(0,0,w,h); x.fillStyle='rgba(201,168,76,.5)'; ps.forEach(p=>{ p.y-=p.s; if(p.y<0)p.y=h; x.globalAlpha=.4; x.beginPath(); x.arc(p.x,p.y,p.r,0,7); x.fill(); }); requestAnimationFrame(loop); }
+  addEventListener('resize',rs); rs(); loop();
+})();
+</script>
+</body>
+</html>
